@@ -25,16 +25,27 @@ static size_t write_callback(void *data, size_t size, size_t nmemb,
   return realsize;
 }
 
+#define MAX_COORD_LEN 8
+
 int main(int argc, char *argv[]) {
   char *version = "v0.0.0";
   char *latitude = "60.17116";
   char *longitude = "24.93265";
-  char *url = (char *)malloc(256);
-  sprintf(url,
-          "https://api.open-meteo.com/v1/"
-          "forecast?latitude=%s&longitude=%s&current="
-          "temperature_2m&timezone=auto",
-          latitude, longitude);
+
+  if (strlen(latitude) > MAX_COORD_LEN || strlen(longitude) > MAX_COORD_LEN) {
+    fprintf(stderr, "Coordinates exceed max length of %d characters\n",
+            MAX_COORD_LEN);
+    return 1;
+  }
+
+  const char *url_fmt = "https://api.open-meteo.com/v1/"
+                        "forecast?latitude=%s&longitude=%s&current="
+                        "temperature_2m&timezone=auto";
+  const int url_len = snprintf(NULL, 0, url_fmt, latitude, longitude);
+  char *url = malloc(url_len + 1);
+  sprintf(url, url_fmt, latitude, longitude);
+
+  printf("URL: %s\n", url);
 
   if (argc == 2 && strcmp(argv[1], "-v") == 0) {
     printf("%s\n", version);
