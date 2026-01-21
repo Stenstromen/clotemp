@@ -27,15 +27,12 @@ static size_t write_callback(void *data, size_t size, size_t nmemb,
 
 #define MAX_COORD_LEN 8
 
-int main(int argc, char *argv[]) {
-  char *version = "v0.0.0";
-  char *latitude = "60.17116";
-  char *longitude = "24.93265";
+char *api_request(char *latitude, char *longitude) {
 
   if (strlen(latitude) > MAX_COORD_LEN || strlen(longitude) > MAX_COORD_LEN) {
     fprintf(stderr, "Coordinates exceed max length of %d characters\n",
             MAX_COORD_LEN);
-    return 1;
+    return NULL;
   }
 
   const char *url_fmt = "https://api.open-meteo.com/v1/"
@@ -44,13 +41,6 @@ int main(int argc, char *argv[]) {
   const int url_len = snprintf(NULL, 0, url_fmt, latitude, longitude);
   char *url = malloc(url_len + 1);
   sprintf(url, url_fmt, latitude, longitude);
-
-  printf("URL: %s\n", url);
-
-  if (argc == 2 && strcmp(argv[1], "-v") == 0) {
-    printf("%s\n", version);
-    return 0;
-  }
 
   CURL *curl;
   struct Memory chunk = {0};
@@ -78,17 +68,41 @@ int main(int argc, char *argv[]) {
           cJSON *time = cJSON_GetObjectItem(current, "time");
           cJSON *temperature = cJSON_GetObjectItem(current, "temperature_2m");
           if (temperature && time) {
-            printf("%s // %.1f°C\n", time->valuestring,
-                   temperature->valuedouble);
+            const char *fmt = "%s // %.1f°C";
+            int len = snprintf(NULL, 0, fmt, time->valuestring,
+                               temperature->valuedouble);
+            char *chunk_response = malloc(len + 1);
+            if (chunk_response) {
+              sprintf(chunk_response, fmt, time->valuestring,
+                      temperature->valuedouble);
+              return chunk_response;
+            }
           }
         }
       }
+      free(url);
+      free(chunk.response);
+      cJSON_Delete(json);
+      return NULL;
     }
   }
-
   curl_easy_cleanup(curl);
   curl_global_cleanup();
-  free(url);
+  return NULL;
+}
 
+int main(int argc, char *argv[]) {
+  char *version = "v0.0.0";
+  char *latitude = "60.17116";
+  char *longitude = "24.93265";
+
+  if (argc == 2 && strcmp(argv[1], "-v") == 0) {
+    printf("%s\n", version);
+    return 0;
+  }
+
+  char *response = api_request(latitude, longitude);
+  printf("%s\n", response);
+  free(response);
   return 0;
 }
