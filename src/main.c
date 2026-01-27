@@ -8,6 +8,11 @@ struct Memory {
   size_t size;
 };
 
+struct config_t {
+  char *latitude;
+  char *longitude;
+} config;
+
 static size_t write_callback(void *data, size_t size, size_t nmemb,
                              void *userp) {
   size_t realsize = size * nmemb;
@@ -91,18 +96,58 @@ char *api_request(char *latitude, char *longitude) {
   return NULL;
 }
 
+struct config_t *read_config() {
+  char *HOME = getenv("HOME");
+
+  FILE *textfile = fopen(strncat(HOME, "/.lotemp", strlen(HOME) + 8), "r");
+  if (textfile == NULL)
+    return NULL;
+
+  char line[256];
+  char lat_buf[32];
+  char lon_buf[32];
+  int items_read = 0;
+
+  while (fgets(line, sizeof(line), textfile)) {
+    if (sscanf(line, "latitude: %s", lat_buf) == 1) {
+      config.latitude = strdup(lat_buf);
+      items_read++;
+    } else if (sscanf(line, "longitude: %s", lon_buf) == 1) {
+      config.longitude = strdup(lon_buf);
+      items_read++;
+    }
+  }
+
+  fclose(textfile);
+
+  if (items_read != 2) {
+    return NULL;
+  }
+
+  return &config;
+}
+
 int main(int argc, char *argv[]) {
   char *version = "v0.0.0";
-  char *latitude = "60.17116";
-  char *longitude = "24.93265";
 
   if (argc == 2 && strcmp(argv[1], "-v") == 0) {
     printf("%s\n", version);
     return 0;
   }
 
-  char *response = api_request(latitude, longitude);
-  printf("%s\n", response);
-  free(response);
+  struct config_t *config = read_config();
+  if (config == NULL) {
+    printf("Failed to read config\n");
+    return 1;
+  }
+
+  char *response = api_request(config->latitude, config->longitude);
+  if (response) {
+    printf("%s\n", response);
+    free(response);
+  }
+
+  free(config->latitude);
+  free(config->longitude);
   return 0;
 }
