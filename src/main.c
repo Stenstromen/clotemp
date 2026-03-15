@@ -1,5 +1,6 @@
 #include "../lib/cJSON.h"
 #include <curl/curl.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -31,6 +32,105 @@ static size_t write_callback(void *data, size_t size, size_t nmemb,
 }
 
 #define MAX_COORD_LEN 8
+
+int api_geo() {
+  const char *url = "https://addr.se/geo";
+
+  CURL *curl;
+  struct Memory chunk = {0};
+
+  CURLcode result = curl_global_init(CURL_GLOBAL_ALL);
+  if (result) {
+    fprintf(stderr, "curl_global_init() failed: %s\n",
+            curl_easy_strerror(result));
+    return 1;
+  }
+
+  curl = curl_easy_init();
+  if (!curl) {
+    curl_global_cleanup();
+    return 1;
+  }
+
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "curl/8.18.0");
+  curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+
+  result = curl_easy_perform(curl);
+  curl_easy_cleanup(curl);
+  curl_global_cleanup();
+
+  if (result != CURLE_OK) {
+    fprintf(stderr, "Request failed: %s\n", curl_easy_strerror(result));
+    free(chunk.response);
+    return 1;
+  }
+
+  char *latitude = NULL;
+  char *longitude = NULL;
+  char *line = chunk.response;
+  int lineno = 0;
+
+  while (line && *line) {
+    char *next = strchr(line, '\n');
+    if (next)
+      *next = '\0';
+
+    lineno++;
+    if (lineno == 9) {
+      char *val = strchr(line, ':');
+      if (val)
+        latitude = strdup(val + 2);
+    } else if (lineno == 10) {
+      char *val = strchr(line, ':');
+      if (val)
+        longitude = strdup(val + 2);
+    }
+
+    if (next)
+      line = next + 1;
+    else
+      break;
+  }
+
+  free(chunk.response);
+
+  if (!latitude || !longitude) {
+    fprintf(stderr, "Failed to parse coordinates from response\n");
+    free(latitude);
+    free(longitude);
+    return 1;
+  }
+
+  char *home = getenv("HOME");
+  if (!home) {
+    fprintf(stderr, "HOME not set\n");
+    free(latitude);
+    free(longitude);
+    return 1;
+  }
+
+  char path[512];
+  snprintf(path, sizeof(path), "%s/.clotemp", home);
+
+  FILE *f = fopen(path, "w");
+  if (!f) {
+    fprintf(stderr, "Failed to write %s\n", path);
+    free(latitude);
+    free(longitude);
+    return 1;
+  }
+
+  fprintf(f, "latitude: %s\nlongitude: %s\n", latitude, longitude);
+  fclose(f);
+
+  printf("Wrote %s\n", path);
+
+  free(latitude);
+  free(longitude);
+  return 0;
+}
 
 char *api_request(char *latitude, char *longitude) {
 
@@ -98,8 +198,13 @@ char *api_request(char *latitude, char *longitude) {
 
 struct config_t *read_config() {
   char *HOME = getenv("HOME");
+  if (!HOME)
+    return NULL;
 
-  FILE *textfile = fopen(strncat(HOME, "/.lotemp", strlen(HOME) + 8), "r");
+  char config_path[512];
+  snprintf(config_path, sizeof(config_path), "%s/.clotemp", HOME);
+
+  FILE *textfile = fopen(config_path, "r");
   if (textfile == NULL)
     return NULL;
 
@@ -135,9 +240,14 @@ int main(int argc, char *argv[]) {
     return 0;
   }
 
+  if (argc == 2 && strcmp(argv[1], "init") == 0) {
+    return api_geo();
+  }
+
   struct config_t *config = read_config();
   if (config == NULL) {
-    printf("Failed to read config\n");
+    printf("Failed to read config\nRun `clotemp init` to initialize your "
+           "location\n");
     return 1;
   }
 

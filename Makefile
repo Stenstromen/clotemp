@@ -8,3 +8,6 @@ clean:
 
 demo: build
 	./bin/clotemp
+
+init: build
+	./bin/clotemp init
