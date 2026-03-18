@@ -11,3 +11,6 @@ demo: build
 
 init: build
 	./bin/clotemp init
+
+install: build
+	sudo cp bin/clotemp /usr/local/bin/clotemp
